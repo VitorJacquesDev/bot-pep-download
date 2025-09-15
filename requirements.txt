@@ -1,0 +1,8 @@
+# Dependências do Bot PEP Download
+# Este arquivo lista todas as bibliotecas necessárias para o funcionamento do script
+
+# Biblioteca para requisições HTTP
+requests>=2.31.0
+
+# Observação: A biblioteca 'zipfile' é parte da biblioteca padrão do Python
+# e não precisa ser instalada separadamente
