@@ -218,17 +218,81 @@ class BotPEPDownload:
             print(f"[ERRO] Erro ao descompactar: {str(e)}")
             return False
     
+    def detectar_mes_disponivel(self):
+        """
+        Detecta automaticamente o mês mais recente disponível no site
+        
+        Returns:
+            datetime: Data do mês disponível mais recente, ou None se não encontrar
+        """
+        print("[INFO] Detectando mês disponível automaticamente...")
+        
+        # Começar do mês atual e voltar até 6 meses
+        hoje = datetime.now()
+        
+        for meses_atras in range(0, 6):  # Tentar até 6 meses atrás
+            if hoje.month - meses_atras <= 0:
+                # Se ultrapassar janeiro, voltar para o ano anterior
+                ano = hoje.year - 1
+                mes = 12 + (hoje.month - meses_atras)
+            else:
+                ano = hoje.year
+                mes = hoje.month - meses_atras
+            
+            # Testar se o arquivo existe para este mês
+            data_teste = datetime(ano, mes, 1)
+            nome_arquivo_teste = self.gerar_nome_arquivo(data_teste)
+            url_teste = self.construir_url_download(data_teste)
+            
+            print(f"[INFO] Testando mês: {data_teste.strftime('%m/%Y')}")
+            
+            try:
+                # Fazer uma requisição HEAD para verificar se o arquivo existe
+                response = requests.head(url_teste, headers=self.headers, timeout=10)
+                
+                if response.status_code == 200:
+                    # Verificar se é um arquivo ZIP válido
+                    content_type = response.headers.get('content-type', '')
+                    content_length = int(response.headers.get('content-length', 0))
+                    
+                    if ('zip' in content_type.lower() or 'octet-stream' in content_type.lower()) and content_length > 0:
+                        print(f"[SUCESSO] Mês disponível encontrado: {data_teste.strftime('%m/%Y')}")
+                        return data_teste
+                        
+            except requests.exceptions.RequestException:
+                # Se houver erro de conexão, continuar tentando
+                continue
+        
+        print("[ERRO] Não foi possível detectar nenhum mês disponível nos últimos 6 meses")
+        return None
+
     def executar(self, descompactar=False, data_ref=None):
         """
         Executa o processo completo de download
         
         Args:
             descompactar (bool): Parâmetro mantido para compatibilidade (descompactação é automática)
-            data_ref (datetime): Data de referência para o arquivo
+            data_ref (datetime): Data de referência para o arquivo. Se None, detecta automaticamente
         """
         print("=" * 60)
         print("BOT DE DOWNLOAD - DADOS PEP (Portal da Transparência)")
         print("=" * 60)
+        
+        # Se não foi fornecida data de referência, detectar automaticamente
+        if data_ref is None:
+            data_ref = self.detectar_mes_disponivel()
+            if data_ref is None:
+                print("[ERRO] Não foi possível detectar o mês disponível automaticamente")
+                print("[INFO] Tentando com mês padrão (2 meses atrás)...")
+                # Fallback para o método original
+                hoje = datetime.now()
+                if hoje.month <= 2:
+                    ano = hoje.year - 1
+                    mes = hoje.month + 10
+                else:
+                    ano = hoje.year
+                    mes = hoje.month - 2
+                data_ref = datetime(ano, mes, 1)
         
         # Gerar nome do arquivo e URL
         nome_arquivo = self.gerar_nome_arquivo(data_ref)
@@ -264,23 +328,32 @@ def main():
         help="Descompactar o arquivo ZIP após download (descompactação automática por padrão)"
     )
     
+    parser.add_argument(
+        "--mes-fixo", 
+        action="store_true",
+        help="Usar lógica fixa de 2 meses atrás (desativa detecção automática)"
+    )
+    
     args = parser.parse_args()
     
-    # Calcular mês disponível no site (normalmente 2 meses antes do atual)
-    hoje = datetime.now()
-    if hoje.month <= 2:
-        # Se for janeiro ou fevereiro, volta para novembro/dezembro do ano anterior
-        ano = hoje.year - 1
-        mes = hoje.month + 10  # 12 - 2 = 10
-    else:
-        ano = hoje.year
-        mes = hoje.month - 2
-    
-    data_ref = datetime(ano, mes, 1)
-    
-    # Criar instância do bot e executar
+    # Criar instância do bot
     bot = BotPEPDownload()
-    bot.executar(descompactar=args.descompactar, data_ref=data_ref)
+    
+    if args.mes_fixo:
+        # Usar lógica fixa original (2 meses atrás)
+        hoje = datetime.now()
+        if hoje.month <= 2:
+            ano = hoje.year - 1
+            mes = hoje.month + 10
+        else:
+            ano = hoje.year
+            mes = hoje.month - 2
+        data_ref = datetime(ano, mes, 1)
+        bot.executar(descompactar=args.descompactar, data_ref=data_ref)
+    else:
+        # Usar detecção automática (padrão)
+        print("[INFO] Usando detecção automática do mês disponível...")
+        bot.executar(descompactar=args.descompactar, data_ref=None)
 
 
 if __name__ == "__main__":
